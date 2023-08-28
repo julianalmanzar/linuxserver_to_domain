@@ -1,0 +1,4 @@
+[Group_name]
+SERVER1_HOSTNAME ansible_host=1.1.1.1
+SERVER2_HOSTNAME ansible_host=2.2.2.2
+.....

@@ -1,0 +1,192 @@
+---
+- name: Add Linux Server to Domain
+  gather_facts: true
+  hosts: Group_name
+  vars:
+    ansible_become: yes
+    ansible_become_method: sudo
+    ansible_user: "{{ server_username  }}"
+    ansible_ssh_pass: "{{ server_password  }}"
+    ansible_become_pass: "{{ server_password  }}"
+
+    credentials: {
+               'username': "{{ domain_admin_user }}",
+               'password': "{{ domain_admin_password }}"
+              }
+    domain_name: "{{ domain_name }}"
+    domain_controller_ip: "{{ domain_controller_ip }}"
+    domain_controller_name: "{{ domain_controller_name }}"
+    domain_group_allowed: "{{ domain_group_allowed }}"
+
+
+    
+  tasks:
+
+    - name: Install CentOS Packages
+      yum:
+        name:
+          - sssd
+          - realmd
+          - oddjob
+          - oddjob-mkhomedir
+          - adcli
+          - samba-common
+          - samba-common-tools
+          - krb5-workstation
+          - openldap-clients
+          - policycoreutils-python
+        state: present
+      when: ansible_distribution == "CentOS"
+
+    - name: Update Hosts File
+      lineinfile:
+        dest: "/etc/hosts"
+        line: "{{ domain_controller_ip }}   {{ domain_controller_name }}.{{ domain_name }}   {{ domain_controller_name }}"
+        state: present
+        backup: yes
+      when: ansible_distribution == "CentOS"
+
+    - name: Join Realm
+      shell:
+        "echo '{{ credentials['password'] }}' | sudo realm join --user={{ credentials['username'] }} {{ domain_name }}"
+      register: result
+      when: ansible_distribution == "CentOS"
+    - name: Print Realm Result
+      debug: var=result.stdout_lines
+      when: ansible_distribution == "CentOS"
+
+    - name: Modify SSDCONF Line 1
+      replace:
+        path: /etc/sssd/sssd.conf
+        regexp: 'use_fully_qualified_names = True'
+        replace: 'use_fully_qualified_names = False'
+      when: ansible_distribution == "CentOS"
+    - name: Modificar SSDCONF Line 2
+      replace:
+        path: /etc/sssd/sssd.conf
+        regexp: 'fallback_homedir = /home/%u@%d'
+        replace: 'fallback_homedir = /home/%u'
+      when: ansible_distribution == "CentOS"
+
+    - name: Restart sssd
+      shell:
+        "sudo systemctl restart sssd"
+      when: ansible_distribution == "CentOS"
+    - name: Daemon Reload
+      shell:
+        "sudo systemctl daemon-reload"
+      when: ansible_distribution == "CentOS"
+
+    - name: Add {{ domain_group_allowed }} to Sudoers
+      lineinfile:
+        dest: "/etc/sudoers"
+        line: "%{{ domain_group_allowed }}   ALL=(ALL)       NOPASSWD: ALL"
+        state: present
+        backup: yes
+      when: ansible_distribution == "CentOS"
+
+    - name: Allow Only {{ domain_group_allowed }} CentOs Login
+      shell:
+        "realm permit -g {{ domain_group_allowed }}@{{ domain_name }}"
+      when: ansible_distribution == "CentOS"
+
+################################
+###### UBUNTU SERVERS ##########
+################################
+
+    - name: Apt Update
+      shell:
+        "sudo apt-get update -y"
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+
+    - name: Install Debian/Ubuntu Packages
+      apt:
+        name:
+          - sssd-ad
+          - sssd-tools
+          - realmd
+          - adcli
+          - packagekit
+        state: present
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Create KRB5 File
+      copy:
+        dest: "/etc/krb5.conf"
+        content: |
+          [libdefaults]
+          default_realm = {{ domain_name }}
+          ticket_lifetime = 24h
+          renew_lifetime = 7d
+          dns_lookup_realm = false
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Install Debian/Ubuntu Remaining Packages
+      apt:
+        name:
+          - krb5-user
+          - sssd-krb5
+        state: present
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Modify Hosts File
+      lineinfile:
+        dest: "/etc/hosts"
+        line: "127.0.1.1       {{ ansible_hostname }}.{{ domain_name }}"
+        state: present
+        backup: yes
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+    - name: Modify Hostname
+      shell:
+        "sudo hostnamectl set-hostname {{ ansible_hostname }}.{{ domain_name }}"
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Kinit
+      shell:
+        "echo {{ credentials['password'] }} | sudo kinit {{ credentials['username'] }}"
+      register: result
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+    - name: Print Kinit Result
+      debug: var=result.stdout_lines
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Join Realm Ubuntu
+      shell:
+        "echo {{ credentials['password'] }} | sudo realm join -v -U {{ credentials['username'] }} {{ domain_name }}"
+      register: result
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+    - name: Print Realm Result
+      debug: var=result.stdout_lines
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Activate Homedir Creation
+      shell:
+        "sudo pam-auth-update --enable mkhomedir"
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Modify SSDCONF Line 1 Ubuntu
+      replace:
+        path: /etc/sssd/sssd.conf
+        regexp: 'use_fully_qualified_names = True'
+        replace: 'use_fully_qualified_names = False'
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+    - name: Modify SSDCONF Line 2 Ubuntu
+      replace:
+        path: /etc/sssd/sssd.conf
+        regexp: 'fallback_homedir = /home/%u@%d'
+        replace: 'fallback_homedir = /home/%u'
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Add {{ domain_group_allowed }} to Sudoers Ubuntu
+      lineinfile:
+        dest: "/etc/sudoers"
+        line: "%{{ domain_group_allowed }}   ALL=(ALL) NOPASSWD:ALL"
+        state: present
+        backup: yes
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"
+
+    - name: Allow Only {{ domain_group_allowed }} Login Ubuntu
+      shell:
+        "realm permit -g {{ domain_group_allowed }}@{{ domain_name }}"
+      when: ansible_distribution == "Debian" or ansible_distribution == "Ubuntu"

@@ -1,0 +1,8 @@
+server_username: linuxuser
+server_password: linuxpassword
+domain_name: example.do
+domain_controller_ip: X.X.X.X
+domain_controller_name: controller
+domain_admin_user: adminuser
+domain_admin_password: adminpassword
+domain_group_allowed: allowedgroup
