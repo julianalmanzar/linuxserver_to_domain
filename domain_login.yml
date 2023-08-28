@@ -61,7 +61,7 @@
         regexp: 'use_fully_qualified_names = True'
         replace: 'use_fully_qualified_names = False'
       when: ansible_distribution == "CentOS"
-    - name: Modificar SSDCONF Line 2
+    - name: Modify SSDCONF Line 2
       replace:
         path: /etc/sssd/sssd.conf
         regexp: 'fallback_homedir = /home/%u@%d'
